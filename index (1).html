@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Photo drift</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3f5f6; --ink: #14191e; --muted: #56626d; --line: #d3dbe0;
+    --panel: #ffffff; --accent: #1f7a73; --accent-ink: #ffffff; --drop: #e8eef0;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1318; --ink: #eef1f4; --muted: #9aa6b1; --line: #27303a;
+      --panel: #171d24; --accent: #7fc8c0; --accent-ink: #0b1412; --drop: #141a21;
+      color-scheme: dark;
+    }
+  }
+  html { height: 100%; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.5;
+  }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .hidden { display: none !important; }
+
+  /* ---------- setup ---------- */
+  #setup { min-height: 100%; display: flex; justify-content: center; padding: 48px 20px 64px; }
+  .wrap { width: 100%; max-width: 640px; }
+  h1 { font-size: clamp(40px, 8vw, 64px); line-height: 1; letter-spacing: -0.03em; margin: 0 0 12px; font-weight: 700; }
+  .lede { color: var(--muted); font-size: 18px; margin: 0 0 36px; max-width: 46ch; }
+  section { margin-bottom: 32px; }
+  h2 { font-size: 20px; margin: 0 0 10px; font-weight: 600; letter-spacing: -0.01em; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 999px;
+    padding: 10px 20px; cursor: pointer; font-weight: 600;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn:disabled { opacity: .5; cursor: wait; }
+  .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 18px; padding: 14px 32px; }
+  .primary:disabled { opacity: .4; cursor: not-allowed; }
+  input[type="text"] {
+    flex: 1 1 280px; min-width: 0; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--panel);
+  }
+  .status { margin: 10px 0 0; color: var(--muted); min-height: 1.5em; }
+  .status.ok { color: var(--accent); font-weight: 600; }
+  .status.err { color: #c0392b; }
+  .or { margin: 14px 0; color: var(--muted); }
+  .note { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  #drop {
+    border: 2px dashed var(--line); background: var(--drop); border-radius: 18px;
+    padding: 24px 20px; text-align: center; transition: border-color .15s, background .15s;
+  }
+  #drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--drop)); }
+  #drop p { margin: 0 0 14px; }
+  #drop .row { justify-content: center; }
+  details { margin-top: 12px; color: var(--muted); }
+  summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+
+  /* ---------- stage ---------- */
+  #stage {
+    position: fixed; inset: 0; z-index: 50; display: none; overflow: hidden;
+    background: radial-gradient(120% 100% at 50% 40%, #1a212a 0%, #0b0e12 70%);
+  }
+  #stage.on { display: block; }
+  #stage.idle { cursor: none; }
+  #layer { position: absolute; inset: 0; }
+  .card {
+    position: absolute; background: #f4f1ea; padding: 9px; border-radius: 3px;
+    box-shadow: 0 18px 40px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.4);
+    will-change: transform, opacity; opacity: 0;
+  }
+  .card canvas { display: block; border-radius: 1px; }
+
+  #chrome {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 9999;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    display: flex; align-items: flex-end; justify-content: center; gap: 14px; flex-wrap: wrap;
+    transition: opacity .4s; pointer-events: none;
+  }
+  #stage.idle #chrome { opacity: 0; }
+  #chrome > * { pointer-events: auto; }
+  .bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+    background: rgba(18,22,28,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 8px 10px; color: #eef1f4;
+  }
+  .bar .btn { background: transparent; color: #eef1f4; border-color: rgba(255,255,255,.18); padding: 7px 14px; font-size: 14px; }
+  .bar .btn:hover { border-color: #7fc8c0; }
+  .bar input[type="range"] { width: 90px; accent-color: #7fc8c0; }
+  #yt { width: 256px; height: 144px; border-radius: 12px; overflow: hidden; background: #000; display: none; border: 1px solid rgba(255,255,255,.12); }
+  #yt.on { display: block; }
+  #yt iframe { width: 100%; height: 100%; border: 0; display: block; }
+  #toast {
+    position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+    background: rgba(18,22,28,.85); color: #eef1f4; padding: 8px 16px; border-radius: 999px;
+    font-size: 14px; opacity: 0; transition: opacity .3s; z-index: 10000; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<main id="setup">
+  <div class="wrap">
+    <h1>Photo drift</h1>
+    <p class="lede">Your photos float in and out across the screen like a screensaver, with your music underneath.</p>
+
+    <section>
+      <h2>Your photos</h2>
+
+      <div id="albumBlock">
+        <div class="row">
+          <input type="text" id="albumInput" placeholder="Paste a Google Photos album link" aria-label="Google Photos album link" autocomplete="off">
+          <button class="btn" id="load" type="button">Load album</button>
+        </div>
+        <p class="note">The album needs to be shared by link.</p>
+        <p class="or">or</p>
+      </div>
+
+      <div id="drop">
+        <p>Drop a folder of photos here</p>
+        <div class="row">
+          <button class="btn" id="pickFolder" type="button">Choose a folder</button>
+          <button class="btn" id="pickFiles" type="button">Choose photos</button>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+      <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+      <p class="status" id="photoStatus" aria-live="polite">No photos added yet.</p>
+
+      <details id="connect" class="hidden">
+        <summary>Connect Google Photos album links</summary>
+        <p class="note">Paste the web app link from your Apps Script setup. It’s saved in this browser.</p>
+        <div class="row">
+          <input type="text" id="apiInput" placeholder="https://script.google.com/macros/s/…/exec" aria-label="Apps Script web app link" autocomplete="off">
+          <button class="btn" id="saveApi" type="button">Save</button>
+        </div>
+      </details>
+    </section>
+
+    <section>
+      <h2>Music</h2>
+      <input type="text" id="ytInput" style="width:100%" placeholder="Paste a YouTube video or playlist link" aria-label="YouTube link" autocomplete="off">
+      <p class="or">or</p>
+      <div class="row">
+        <button class="btn" id="pickAudio" type="button">Choose a music file</button>
+      </div>
+      <input type="file" id="audioInput" accept="audio/*" class="hidden">
+      <p class="status" id="musicStatus" aria-live="polite">Music is optional.</p>
+    </section>
+
+    <button class="btn primary" id="start" type="button" disabled>Start slideshow</button>
+    <p class="note">Press F for full screen once it’s running. Space pauses.</p>
+  </div>
+</main>
+
+<div id="stage" aria-label="Photo slideshow">
+  <div id="layer"></div>
+  <div id="toast" role="status"></div>
+  <div id="chrome">
+    <div id="yt"></div>
+    <div class="bar">
+      <button class="btn" id="bPause" type="button">Pause</button>
+      <button class="btn" id="bPace" type="button">Pace: Medium</button>
+      <span id="audioCtl" class="hidden" style="display:flex;gap:8px;align-items:center">
+        <button class="btn" id="bMusic" type="button">Music off</button>
+        <input type="range" id="vol" min="0" max="1" step="0.01" value="0.7" aria-label="Music volume">
+      </span>
+      <button class="btn" id="bFull" type="button">Full screen</button>
+      <button class="btn" id="bBack" type="button">Back</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Paste your Apps Script web app link between the quotes to bake it into this page
+  // for everyone who opens it. Leave it empty to use the "Connect Google Photos" box instead.
+  const API_URL = '';
+
+  const $ = (s) => document.querySelector(s);
+  const IMG_EXT = /\.(jpe?g|png|webp|gif|avif|bmp|heic|heif)$/i;
+  const isImage = (f) => (f.type && f.type.startsWith('image/')) || IMG_EXT.test(f.name || '');
+  const store = {
+    get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  let items = [];            // { u } for album photos, { f } for files from the computer
+  const seen = new Set();
+  let audioURL = null;
+
+  // ---------- photo status ----------
+  function refreshPhotoStatus(extra) {
+    const st = $('#photoStatus');
+    st.classList.remove('err');
+    if (items.length) {
+      st.textContent = (extra || '') + items.length + (items.length === 1 ? ' photo' : ' photos') + ' ready.';
+      st.classList.add('ok');
+    } else {
+      st.textContent = 'No photos added yet.';
+      st.classList.remove('ok');
+    }
+    $('#start').disabled = items.length === 0;
+  }
+
+  // ---------- Google Photos album link ----------
+  function apiBase() { return API_URL || store.get('drift:api'); }
+
+  function syncAlbumUI() {
+    const has = !!apiBase();
+    $('#albumBlock').classList.toggle('hidden', !has);
+    $('#connect').classList.toggle('hidden', !!API_URL);
+    $('#apiInput').value = store.get('drift:api');
+  }
+  $('#saveApi').onclick = () => {
+    const v = $('#apiInput').value.trim();
+    if (v && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(v)) {
+      $('#photoStatus').textContent = 'That doesn’t look like an Apps Script web app link. It should end in /exec.';
+      $('#photoStatus').classList.add('err'); $('#photoStatus').classList.remove('ok');
+      return;
+    }
+    store.set('drift:api', v); syncAlbumUI(); refreshPhotoStatus();
+  };
+
+  $('#albumInput').value = store.get('drift:album');
+  $('#load').onclick = async () => {
+    const url = $('#albumInput').value.trim();
+    const st = $('#photoStatus');
+    st.classList.remove('ok', 'err');
+    if (!url) { st.textContent = 'Paste your album link first.'; st.classList.add('err'); return; }
+    st.textContent = 'Reading the album…';
+    $('#load').disabled = true; $('#start').disabled = true;
+    try {
+      const base = apiBase();
+      const r = await fetch(base + (base.includes('?') ? '&' : '?') + 'album=' + encodeURIComponent(url));
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      items = items.filter((i) => i.f).concat(data.photos);
+      store.set('drift:album', url);
+      refreshPhotoStatus('“' + data.title + '”: ');
+    } catch (e) {
+      st.textContent = (e && e.message ? e.message : 'Couldn’t read that album.').replace(/^Error:\s*/, '');
+      if (/Failed to fetch|NetworkError|Load failed/i.test(st.textContent)) {
+        st.textContent = 'Couldn’t reach the album reader. Check the Apps Script link and that access is set to Anyone.';
+      }
+      st.classList.add('err');
+      $('#start').disabled = items.length === 0;
+    }
+    $('#load').disabled = false;
+  };
+  $('#albumInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#load').click(); });
+
+  // ---------- photos from the computer ----------
+  function addFiles(list) {
+    for (const f of list) {
+      if (!isImage(f)) continue;
+      const key = f.name + '|' + f.size + '|' + f.lastModified;
+      if (seen.has(key)) continue;
+      seen.add(key); items.push({ f });
+    }
+    refreshPhotoStatus();
+  }
+  async function walk(entry, out) {
+    if (entry.isFile) {
+      await new Promise((res) => entry.file((f) => { out.push(f); res(); }, res));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej)).catch(() => []);
+        for (const e of batch) await walk(e, out);
+      } while (batch.length);
+    }
+  }
+  async function filesFromDrop(dt) {
+    const out = [];
+    const entries = Array.from(dt.items || []).map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+    if (entries.length) { for (const e of entries) await walk(e, out); }
+    else out.push(...Array.from(dt.files || []));
+    return out;
+  }
+  const drop = $('#drop');
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', async (e) => {
+    $('#photoStatus').textContent = 'Reading photos…';
+    addFiles(await filesFromDrop(e.dataTransfer));
+  });
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+  $('#pickFiles').onclick = () => $('#fileInput').click();
+  $('#pickFolder').onclick = () => $('#folderInput').click();
+  $('#fileInput').onchange = (e) => { addFiles(Array.from(e.target.files)); e.target.value = ''; };
+  $('#folderInput').onchange = (e) => { addFiles(Array.from(e.target.files)); e.target.value = ''; };
+
+  // ---------- music setup ----------
+  $('#ytInput').value = store.get('drift:yt');
+  $('#pickAudio').onclick = () => $('#audioInput').click();
+  $('#audioInput').onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (audioURL) URL.revokeObjectURL(audioURL);
+    audioURL = URL.createObjectURL(f);
+    $('#ytInput').value = '';
+    const st = $('#musicStatus');
+    st.textContent = 'Using ' + f.name; st.classList.add('ok'); st.classList.remove('err');
+  };
+  $('#ytInput').addEventListener('input', () => {
+    const st = $('#musicStatus');
+    const v = $('#ytInput').value.trim();
+    if (!v) { st.textContent = audioURL ? 'Using your audio file.' : 'Music is optional.'; st.classList.remove('err'); return; }
+    if (ytEmbed(v)) { st.textContent = 'YouTube link looks good.'; st.classList.add('ok'); st.classList.remove('err'); store.set('drift:yt', v); }
+    else { st.textContent = 'That doesn’t look like a YouTube link.'; st.classList.remove('ok'); st.classList.add('err'); }
+  });
+
+  function ytEmbed(raw) {
+    let u;
+    try { u = new URL(raw.trim()); } catch (e) { return null; }
+    const host = u.hostname.replace(/^(www|m|music)\./, '');
+    let id = null;
+    const list = u.searchParams.get('list');
+    if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+    else if (host === 'youtube.com') {
+      id = u.searchParams.get('v');
+      const m = u.pathname.match(/^\/(shorts|embed|live)\/([\w-]{6,})/);
+      if (m) id = m[2];
+    } else return null;
+    if (list) return 'https://www.youtube.com/embed/videoseries?list=' + encodeURIComponent(list) + '&autoplay=1&loop=1&rel=0&playsinline=1';
+    if (id) return 'https://www.youtube.com/embed/' + encodeURIComponent(id) + '?autoplay=1&loop=1&playlist=' + encodeURIComponent(id) + '&rel=0&playsinline=1';
+    return null;
+  }
+
+  // ---------- slideshow engine ----------
+  const stage = $('#stage'), layer = $('#layer');
+  const PACES = { Calm: { life: 26, max: 6 }, Medium: { life: 20, max: 7 }, Lively: { life: 14, max: 8 } };
+  const PACE_ORDER = ['Calm', 'Medium', 'Lively'];
+  let paceName = 'Medium';
+  let order = [], pos = 0, running = false, paused = false, timer = null, z = 1, loading = 0;
+  const live = new Set();
+  let audio = null;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function nextItem() {
+    if (pos >= order.length) { order = shuffle(items.slice()); pos = 0; }
+    return order[pos++];
+  }
+
+  function loadImage(src, cleanup) {
+    return new Promise((res, rej) => {
+      const im = new Image();
+      const timeout = setTimeout(() => { cleanup && cleanup(); rej(new Error('timeout')); }, 20000);
+      im.onload = () => { clearTimeout(timeout); res({ src: im, w: im.naturalWidth, h: im.naturalHeight, done: cleanup || (() => {}) }); };
+      im.onerror = () => { clearTimeout(timeout); cleanup && cleanup(); rej(new Error('load')); };
+      im.src = src;
+    });
+  }
+  async function decode(it) {
+    if (it.u) return loadImage(it.u + '=w1600-h1600');
+    try {
+      const bmp = await createImageBitmap(it.f);
+      return { src: bmp, w: bmp.width, h: bmp.height, done() { try { bmp.close(); } catch (e) {} } };
+    } catch (e) { /* fall back to <img> */ }
+    const url = URL.createObjectURL(it.f);
+    return loadImage(url, () => URL.revokeObjectURL(url));
+  }
+
+  async function spawn() {
+    if (!running || loading >= 2) return;
+    loading++;
+    let item = null;
+    for (let t = 0; t < 6 && !item; t++) {
+      try { item = await decode(nextItem()); } catch (e) { item = null; }
+    }
+    loading--;
+    if (!item) return;
+    if (!running) { item.done(); return; }
+    place(item);
+  }
+
+  function place(item) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const narrow = vw < 700;
+    const s = 0.8 + Math.random() * 0.4;
+    const maxW = vw * (narrow ? 0.7 : 0.36) * s;
+    const maxH = vh * (narrow ? 0.4 : 0.58) * s;
+    const k = Math.min(maxW / item.w, maxH / item.h);
+    const w = Math.max(60, Math.round(item.w * k)), h = Math.max(60, Math.round(item.h * k));
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(item.src, 0, 0, canvas.width, canvas.height);
+    item.done();
+
+    // pick the candidate spot farthest from photos already on screen
+    let best = null, bestScore = -1;
+    for (let i = 0; i < 6; i++) {
+      const cx = vw * (0.12 + Math.random() * 0.76), cy = vh * (0.14 + Math.random() * 0.72);
+      let score = Infinity;
+      for (const c of live) score = Math.min(score, Math.hypot(c.cx - cx, c.cy - cy));
+      if (score > bestScore) { bestScore = score; best = { cx, cy }; }
+    }
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.left = best.cx + 'px';
+    card.style.top = best.cy + 'px';
+    card.style.zIndex = String(++z);
+    card.appendChild(canvas);
+    layer.appendChild(card);
+
+    const rot = (Math.random() - 0.5) * (reduceMotion ? 6 : 20);
+    const dx = (Math.random() - 0.5) * vw * (reduceMotion ? 0.01 : 0.08);
+    const dy = (Math.random() - 0.5) * vh * (reduceMotion ? 0.01 : 0.08);
+    const base = 'translate(-50%,-50%)';
+    const kf = [
+      { opacity: 0, transform: base + ' translate(' + (-dx) + 'px,' + (-dy) + 'px) rotate(' + (rot - 2) + 'deg) scale(.92)', offset: 0 },
+      { opacity: 1, offset: 0.12 },
+      { opacity: 1, offset: 0.86 },
+      { opacity: 0, transform: base + ' translate(' + dx + 'px,' + dy + 'px) rotate(' + (rot + 2) + 'deg) scale(1.03)', offset: 1 }
+    ];
+    const life = PACES[paceName].life * 1000 * (0.85 + Math.random() * 0.3);
+    const anim = card.animate(kf, { duration: life, easing: 'linear', fill: 'both' });
+    const rec = { el: card, anim, cx: best.cx, cy: best.cy };
+    live.add(rec);
+    if (paused) anim.pause();
+    anim.onfinish = () => { live.delete(rec); card.remove(); };
+  }
+
+  function tick() {
+    clearTimeout(timer);
+    if (!running) return;
+    const p = PACES[paceName];
+    if (!paused && live.size < p.max) spawn();
+    timer = setTimeout(tick, (p.life * 1000 / p.max) * (0.7 + Math.random() * 0.6));
+  }
+
+  // ---------- start / stop ----------
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  function startMusic() {
+    $('#yt').classList.remove('on'); $('#yt').innerHTML = '';
+    $('#audioCtl').classList.add('hidden');
+    const yt = ytEmbed($('#ytInput').value);
+    if (yt) {
+      const f = document.createElement('iframe');
+      f.src = yt;
+      f.title = 'Background music';
+      f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      f.referrerPolicy = 'strict-origin-when-cross-origin';
+      $('#yt').appendChild(f);
+      $('#yt').classList.add('on');
+    } else if (audioURL) {
+      audio = new Audio(audioURL);
+      audio.loop = true; audio.volume = parseFloat($('#vol').value);
+      audio.play().then(() => { $('#bMusic').textContent = 'Music on'; }).catch(() => { $('#bMusic').textContent = 'Music off'; });
+      $('#audioCtl').classList.remove('hidden');
+    }
+  }
+
+  function startShow() {
+    if (!items.length) return;
+    $('#setup').classList.add('hidden');
+    stage.classList.add('on');
+    running = true; paused = false; $('#bPause').textContent = 'Pause';
+    order = shuffle(items.slice()); pos = 0;
+    startMusic();
+    [0, 700, 1400, 2100].forEach((t) => setTimeout(() => { if (running && !paused) spawn(); }, t));
+    tick();
+    wake();
+  }
+
+  function stopShow() {
+    running = false; clearTimeout(timer);
+    for (const c of live) { c.anim.cancel(); c.el.remove(); }
+    live.clear(); layer.innerHTML = '';
+    if (audio) { audio.pause(); audio = null; }
+    $('#yt').classList.remove('on'); $('#yt').innerHTML = '';
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    stage.classList.remove('on');
+    $('#setup').classList.remove('hidden');
+  }
+
+  function togglePause() {
+    paused = !paused;
+    $('#bPause').textContent = paused ? 'Play' : 'Pause';
+    for (const c of live) paused ? c.anim.pause() : c.anim.play();
+    if (!paused) tick();
+  }
+
+  function cyclePace() {
+    paceName = PACE_ORDER[(PACE_ORDER.indexOf(paceName) + 1) % PACE_ORDER.length];
+    $('#bPace').textContent = 'Pace: ' + paceName;
+    toast('Pace: ' + paceName);
+    tick();
+  }
+
+  async function toggleFull() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch (e) {
+      toast('Full screen isn’t available here. Try F11, or Control-Command-F on a Mac.');
+    }
+  }
+
+  function toggleMusic() {
+    if (!audio) return;
+    if (audio.paused) { audio.play(); $('#bMusic').textContent = 'Music on'; }
+    else { audio.pause(); $('#bMusic').textContent = 'Music off'; }
+  }
+
+  $('#start').onclick = startShow;
+  $('#bPause').onclick = togglePause;
+  $('#bPace').onclick = cyclePace;
+  $('#bFull').onclick = toggleFull;
+  $('#bBack').onclick = stopShow;
+  $('#bMusic').onclick = toggleMusic;
+  $('#vol').oninput = (e) => { if (audio) audio.volume = parseFloat(e.target.value); };
+
+  // controls fade out when idle
+  let idleT = null;
+  function wake() {
+    stage.classList.remove('idle');
+    clearTimeout(idleT);
+    idleT = setTimeout(() => { if (running) stage.classList.add('idle'); }, 3000);
+  }
+  ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (running) wake(); }, { passive: true }));
+
+  window.addEventListener('keydown', (e) => {
+    if (!running) return;
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+    else if (e.key === 'f' || e.key === 'F') toggleFull();
+    else if (e.key === 'm' || e.key === 'M') toggleMusic();
+    else if (e.key === 'p' || e.key === 'P') cyclePace();
+  });
+
+  syncAlbumUI();
+  refreshPhotoStatus();
+})();
+</script>
+</body>
+</html>

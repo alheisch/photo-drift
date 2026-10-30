@@ -45,7 +45,8 @@
     padding: 10px 20px; cursor: pointer; font-weight: 600;
   }
   .btn:hover { border-color: var(--accent); }
-  .btn:disabled { opacity: .5; cursor: wait; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  #load:disabled { cursor: wait; }
   .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 18px; padding: 14px 32px; }
   .primary:disabled { opacity: .4; cursor: not-allowed; }
   input[type="text"] {
@@ -66,6 +67,13 @@
   #drop .row { justify-content: center; }
   details { margin-top: 12px; color: var(--muted); }
   summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+
+  /* ---------- shared-link landing ---------- */
+  #landing { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 48px 20px; }
+  #landing .wrap { text-align: left; }
+  .kicker { margin: 0 0 8px; color: var(--accent); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
+  #landing a { color: var(--accent); }
+  #shareLink { width: 100%; margin-top: 10px; }
 
   /* ---------- stage ---------- */
   #stage {
@@ -121,10 +129,10 @@
 
       <div id="albumBlock">
         <div class="row">
-          <input type="text" id="albumInput" placeholder="Paste a Google Photos album link" aria-label="Google Photos album link" autocomplete="off">
-          <button class="btn" id="load" type="button">Load album</button>
+          <input type="text" id="albumInput" placeholder="Paste a Google Photos album or Drive folder link" aria-label="Google Photos album or Google Drive folder link" autocomplete="off">
+          <button class="btn" id="load" type="button">Load photos</button>
         </div>
-        <p class="note">The album needs to be shared by link.</p>
+        <p class="note">The album or folder needs to be shared with “Anyone with the link”.</p>
         <p class="or">or</p>
       </div>
 
@@ -139,14 +147,6 @@
       <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
       <p class="status" id="photoStatus" aria-live="polite">No photos added yet.</p>
 
-      <details id="connect" class="hidden">
-        <summary>Connect Google Photos album links</summary>
-        <p class="note">Paste the web app link from your Apps Script setup. It’s saved in this browser.</p>
-        <div class="row">
-          <input type="text" id="apiInput" placeholder="https://script.google.com/macros/s/…/exec" aria-label="Apps Script web app link" autocomplete="off">
-          <button class="btn" id="saveApi" type="button">Save</button>
-        </div>
-      </details>
     </section>
 
     <section>
@@ -162,6 +162,24 @@
 
     <button class="btn primary" id="start" type="button" disabled>Start slideshow</button>
     <p class="note">Press F for full screen once it’s running. Space pauses.</p>
+
+    <section style="margin-top:36px">
+      <h2>Share it</h2>
+      <button class="btn" id="share" type="button" disabled>Create share link</button>
+      <input type="text" id="shareLink" class="hidden" readonly aria-label="Share link">
+      <p class="status" id="shareStatus" aria-live="polite">Load an album first, then you can make a link anyone can open.</p>
+    </section>
+  </div>
+</main>
+
+<main id="landing" class="hidden">
+  <div class="wrap">
+    <p class="kicker">A slideshow for you</p>
+    <h1 id="landingTitle">Photo drift</h1>
+    <p class="status" id="landingStatus" aria-live="polite">Loading photos…</p>
+    <button class="btn primary" id="landingPlay" type="button" disabled>Play slideshow</button>
+    <p class="note">Turn your sound on. Press F for full screen and Space to pause.</p>
+    <p class="note"><a id="makeOwn" href="./">Make your own</a></p>
   </div>
 </main>
 
@@ -185,10 +203,6 @@
 
 <script>
 (function () {
-  // Paste your Apps Script web app link between the quotes to bake it into this page
-  // for everyone who opens it. Leave it empty to use the "Connect Google Photos" box instead.
-  const API_URL = '';
-
   const $ = (s) => document.querySelector(s);
   const IMG_EXT = /\.(jpe?g|png|webp|gif|avif|bmp|heic|heif)$/i;
   const isImage = (f) => (f.type && f.type.startsWith('image/')) || IMG_EXT.test(f.name || '');
@@ -216,45 +230,152 @@
   }
 
   // ---------- Google Photos album link ----------
-  function apiBase() { return API_URL || store.get('drift:api'); }
+  let shared = false;
 
-  function syncAlbumUI() {
-    const has = !!apiBase();
-    $('#albumBlock').classList.toggle('hidden', !has);
-    $('#connect').classList.toggle('hidden', !!API_URL);
-    $('#apiInput').value = store.get('drift:api');
-  }
-  $('#saveApi').onclick = () => {
-    const v = $('#apiInput').value.trim();
-    if (v && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(v)) {
-      $('#photoStatus').textContent = 'That doesn’t look like an Apps Script web app link. It should end in /exec.';
-      $('#photoStatus').classList.add('err'); $('#photoStatus').classList.remove('ok');
-      return;
+  let albumLoaded = null; // { url, title } once an album has loaded
+
+  const RELAYS = [
+    { name: 'relay 1', build: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
+    { name: 'relay 2', build: (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u) },
+    { name: 'relay 3', build: (u) => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u) }
+  ];
+  let relayLog = [];
+
+  // Fetch a page through free public relays (browsers can’t read Google’s pages directly).
+  // `accept` decides whether a relay’s answer is usable; the first usable one wins.
+  async function relayText(target, accept) {
+    for (const relay of RELAYS) {
+      try {
+        const ctl = new AbortController();
+        const to = setTimeout(() => ctl.abort(), 25000);
+        const r = await fetch(relay.build(target), { signal: ctl.signal });
+        clearTimeout(to);
+        if (!r.ok) { relayLog.push(relay.name + ': answered with code ' + r.status); continue; }
+        const text = await r.text();
+        if (accept(text)) return text;
+        relayLog.push(relay.name + ': reached Google but found no photos on the page (' + Math.round(text.length / 1000) + ' KB)');
+      } catch (e) {
+        relayLog.push(relay.name + ': ' + (e && e.name === 'AbortError' ? 'timed out' : 'blocked or unreachable'));
+      }
     }
-    store.set('drift:api', v); syncAlbumUI(); refreshPhotoStatus();
-  };
+    return null;
+  }
+  const relayDetails = () => relayLog.length ? ' Details: ' + relayLog.join('; ') + '.' : '';
+
+  // ----- Google Photos shared album -----
+  function parseAlbumHtml(html) {
+    const t = (html.match(/<meta property="og:title" content="([^"]*)"/) || [])[1] || 'Album';
+    const title = t.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+·\s+.*$/, '');
+    const re = /lh3\.googleusercontent\.com\\?\/pw\\?\/([\w-]+)/g;
+    const ids = new Set(); const photos = []; let m;
+    while ((m = re.exec(html))) {
+      if (ids.has(m[1])) continue;
+      ids.add(m[1]);
+      photos.push({ u: 'https://lh3.googleusercontent.com/pw/' + m[1] });
+    }
+    return { title, photos };
+  }
+
+  async function fetchPhotosAlbum(url) {
+    if (!/^https:\/\/(photos\.app\.goo\.gl|photos\.google\.com)\//.test(url)) {
+      throw new Error('Paste a Google Photos album link (it starts with photos.app.goo.gl) or a Google Drive folder link.');
+    }
+    let data = null;
+    await relayText(url, (t) => { data = parseAlbumHtml(t); return data.photos.length > 0; });
+    if (!data || !data.photos.length) {
+      throw new Error('Couldn’t read that album. Check that it’s shared by link and try again.' + relayDetails());
+    }
+    return data;
+  }
+
+  // ----- Google Drive folder -----
+  function parseDriveFolderHtml(html) {
+    const files = [], folders = [];
+    let title = '';
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      title = (doc.title || '').replace(/\s*[-–]\s*Google Drive\s*$/i, '').trim();
+      doc.querySelectorAll('.flip-entry').forEach((el) => {
+        const id = (el.id || '').replace(/^entry-/, '');
+        if (!id) return;
+        const name = ((el.querySelector('.flip-entry-title') || {}).textContent || '').trim();
+        const a = el.querySelector('a');
+        const href = (a && a.getAttribute('href')) || '';
+        if (IMG_EXT.test(name)) files.push(id);
+        else if (/\/folders\/|embeddedfolderview/.test(href)) folders.push(id);
+      });
+    } catch (e) { /* use the fallback below */ }
+    if (!files.length && !folders.length) {
+      // Fallback: collect every file id on the page. Non-photos simply fail to load and are skipped.
+      const seenIds = new Set();
+      const re = /id="entry-([\w-]{15,})"|\/file\/d\/([\w-]{15,})/g;
+      let m;
+      while ((m = re.exec(html))) {
+        const id = m[1] || m[2];
+        if (!seenIds.has(id)) { seenIds.add(id); files.push(id); }
+      }
+    }
+    return { title, files, folders };
+  }
+
+  async function fetchDriveFolder(url) {
+    const m = url.match(/\/folders\/([\w-]+)/) || url.match(/[?&]id=([\w-]+)/);
+    if (!m) throw new Error('Paste a Google Drive folder link (it contains /folders/).');
+    const visited = new Set();
+    const photos = [];
+    let title = '';
+    async function walk(id, depth) {
+      if (visited.has(id) || visited.size >= 15) return;
+      visited.add(id);
+      let res = null;
+      await relayText('https://drive.google.com/embeddedfolderview?id=' + id, (t) => {
+        res = parseDriveFolderHtml(t);
+        return res.files.length + res.folders.length > 0;
+      });
+      if (!res) return;
+      if (depth === 0) title = res.title;
+      res.files.forEach((fid) => photos.push({ u: 'https://lh3.googleusercontent.com/d/' + fid }));
+      if (depth < 2) { for (const sub of res.folders) await walk(sub, depth + 1); }
+    }
+    await walk(m[1], 0);
+    if (!photos.length) {
+      throw new Error('No photos found in that folder. Check that sharing is set to “Anyone with the link” and that it contains image files.' + relayDetails());
+    }
+    return { title: title || 'Drive folder', photos };
+  }
+
+  const isDrive = (u) => /^https:\/\/drive\.google\.com\//.test(u);
+
+  async function fetchAlbum(url) {
+    relayLog = [];
+    const data = isDrive(url) ? await fetchDriveFolder(url) : await fetchPhotosAlbum(url);
+    data.photos = (data.photos || []).filter((x) => typeof x.u === 'string' &&
+      (x.u.startsWith('https://lh3.googleusercontent.com/pw/') || x.u.startsWith('https://lh3.googleusercontent.com/d/')));
+    if (!data.photos.length) throw new Error('No photos found.');
+    return data;
+  }
+  function friendlyError(e) {
+    return (e && e.message ? e.message : 'Couldn’t read that link.').replace(/^Error:\s*/, '');
+  }
 
   $('#albumInput').value = store.get('drift:album');
   $('#load').onclick = async () => {
     const url = $('#albumInput').value.trim();
     const st = $('#photoStatus');
     st.classList.remove('ok', 'err');
-    if (!url) { st.textContent = 'Paste your album link first.'; st.classList.add('err'); return; }
-    st.textContent = 'Reading the album…';
+    if (!url) { st.textContent = 'Paste an album or folder link first.'; st.classList.add('err'); return; }
+    st.textContent = 'Reading your photos…';
     $('#load').disabled = true; $('#start').disabled = true;
     try {
-      const base = apiBase();
-      const r = await fetch(base + (base.includes('?') ? '&' : '?') + 'album=' + encodeURIComponent(url));
-      const data = await r.json();
-      if (data.error) throw new Error(data.error);
+      const data = await fetchAlbum(url);
       items = items.filter((i) => i.f).concat(data.photos);
+      albumLoaded = { url, title: data.title || '' };
       store.set('drift:album', url);
       refreshPhotoStatus('“' + data.title + '”: ');
+      $('#share').disabled = false;
+      $('#shareStatus').textContent = 'Ready. Choose your music first, then create the link.';
     } catch (e) {
-      st.textContent = (e && e.message ? e.message : 'Couldn’t read that album.').replace(/^Error:\s*/, '');
-      if (/Failed to fetch|NetworkError|Load failed/i.test(st.textContent)) {
-        st.textContent = 'Couldn’t reach the album reader. Check the Apps Script link and that access is set to Anyone.';
-      }
+      st.textContent = friendlyError(e);
       st.classList.add('err');
       $('#start').disabled = items.length === 0;
     }
@@ -388,7 +509,13 @@
       try { item = await decode(nextItem()); } catch (e) { item = null; }
     }
     loading--;
-    if (!item) return;
+    if (!item) {
+      if (running && Date.now() - (spawn.lastWarn || 0) > 30000) {
+        spawn.lastWarn = Date.now();
+        toast('Photos aren’t loading. They may not be shared publicly, or this network is blocking them.');
+      }
+      return;
+    }
     if (!running) { item.done(); return; }
     place(item);
   }
@@ -484,6 +611,7 @@
   function startShow() {
     if (!items.length) return;
     $('#setup').classList.add('hidden');
+    $('#landing').classList.add('hidden');
     stage.classList.add('on');
     running = true; paused = false; $('#bPause').textContent = 'Pause';
     order = shuffle(items.slice()); pos = 0;
@@ -501,7 +629,7 @@
     $('#yt').classList.remove('on'); $('#yt').innerHTML = '';
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     stage.classList.remove('on');
-    $('#setup').classList.remove('hidden');
+    (shared ? $('#landing') : $('#setup')).classList.remove('hidden');
   }
 
   function togglePause() {
@@ -559,7 +687,62 @@
     else if (e.key === 'p' || e.key === 'P') cyclePace();
   });
 
-  syncAlbumUI();
+  // ---------- share link ----------
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch (e) { /* fall back */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  $('#share').onclick = async () => {
+    if (!albumLoaded) return;
+    const p = new URLSearchParams();
+    p.set('a', albumLoaded.url);
+    const yt = $('#ytInput').value.trim();
+    if (yt && ytEmbed(yt)) p.set('y', yt);
+    p.set('p', paceName);
+    if (albumLoaded.title) p.set('t', albumLoaded.title);
+    const link = location.href.split('#')[0] + '#' + p.toString();
+    const box = $('#shareLink');
+    box.value = link; box.classList.remove('hidden'); box.select();
+    const ok = await copyText(link);
+    let msg = ok ? 'Link copied. Anyone who opens it can play your slideshow.' : 'Copy the link above to share it.';
+    if (audioURL && !(yt && ytEmbed(yt))) msg += ' A music file from your computer can’t be shared, so add a YouTube link if you want music.';
+    if (items.some((i) => i.f)) msg += ' Photos from your computer aren’t included, only the album or folder.';
+    $('#shareStatus').textContent = msg;
+  };
+
+  // ---------- opening a shared link ----------
+  (function initShared() {
+    const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const a = p.get('a');
+    if (!a) return;
+    shared = true;
+    const y = p.get('y');
+    $('#ytInput').value = (y && ytEmbed(y)) ? y : '';
+    const pc = p.get('p');
+    if (pc && PACES[pc]) { paceName = pc; $('#bPace').textContent = 'Pace: ' + pc; }
+    const t = p.get('t');
+    if (t) { $('#landingTitle').textContent = t; document.title = t + ' · Photo drift'; }
+    $('#makeOwn').href = location.href.split('#')[0];
+    $('#setup').classList.add('hidden');
+    $('#landing').classList.remove('hidden');
+    $('#landingPlay').onclick = startShow;
+    const st = $('#landingStatus');
+    fetchAlbum(a).then((data) => {
+      items = data.photos;
+      st.textContent = data.photos.length + ' photos ready.';
+      st.classList.add('ok');
+      $('#landingPlay').disabled = false;
+    }).catch((e) => { st.textContent = friendlyError(e); st.classList.add('err'); });
+  })();
+
   refreshPhotoStatus();
 })();
 </script>

@@ -73,7 +73,8 @@
   #landing .wrap { text-align: left; }
   .kicker { margin: 0 0 8px; color: var(--accent); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
   #landing a { color: var(--accent); }
-  #shareLink { width: 100%; margin-top: 10px; }
+  #shareLink, #hostLink { width: 100%; margin-top: 10px; }
+  details ol { margin: 10px 0 0; padding-left: 22px; }
 
   /* ---------- stage ---------- */
   #stage {
@@ -169,6 +170,32 @@
       <input type="text" id="shareLink" class="hidden" readonly aria-label="Share link">
       <p class="status" id="shareStatus" aria-live="polite">Load an album first, then you can make a link anyone can open.</p>
     </section>
+
+    <section>
+      <h2>Host folder photos on GitHub</h2>
+      <p class="note" style="margin-top:0">Photos from your computer can’t be shared directly. This shrinks them and packs them into zip files you upload to your GitHub site, so a share link can show them. Anyone with the link can see these photos, so only use ones you’re happy to make public.</p>
+      <div class="row" style="margin-top:12px">
+        <input type="text" id="hostName" placeholder="Album name, like france-2026" aria-label="Album name" autocomplete="off">
+        <input type="text" id="hostTitle" placeholder="Title shown to viewers (optional)" aria-label="Album title" autocomplete="off">
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="prep" type="button" disabled>Prepare photos</button>
+        <button class="btn" id="hostShare" type="button">Create share link</button>
+      </div>
+      <p class="status" id="prepStatus" aria-live="polite">Add photos from a folder above first.</p>
+      <details id="hostSteps">
+        <summary>How to upload them to GitHub</summary>
+        <ol>
+          <li>Unzip each zip file that downloaded. Each one contains a folder called <b>albums</b>. If your browser asks to allow multiple downloads, say yes.</li>
+          <li>Open your repository on GitHub, click <b>Add file</b>, then <b>Upload files</b>.</li>
+          <li>Drag the <b>albums</b> folder from the first unzip into the box. Wait for the upload to finish, then click <b>Commit changes</b>.</li>
+          <li>Repeat for every other zip. They all add photos to the same album. The last zip also contains the <b>manifest.json</b> file that makes the album appear.</li>
+          <li>Wait a minute or two for your site to update, then open your share link.</li>
+        </ol>
+      </details>
+      <input type="text" id="hostLink" class="hidden" readonly aria-label="Share link for the hosted album">
+      <p class="status" id="hostShareStatus" aria-live="polite"></p>
+    </section>
   </div>
 </main>
 
@@ -201,6 +228,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function () {
   const $ = (s) => document.querySelector(s);
@@ -227,6 +255,14 @@
       st.classList.remove('ok');
     }
     $('#start').disabled = items.length === 0;
+    const hasFiles = items.some((i) => i.f);
+    $('#prep').disabled = !hasFiles;
+    if (typeof preparing === 'undefined' || !preparing) {
+      const ps = $('#prepStatus');
+      if (ps && !ps.classList.contains('ok') && !ps.classList.contains('err')) {
+        ps.textContent = hasFiles ? 'Ready to prepare ' + items.filter((i) => i.f).length + ' photos.' : 'Add photos from a folder above first.';
+      }
+    }
   }
 
   // ---------- Google Photos album link ----------
@@ -492,7 +528,7 @@
     });
   }
   async function decode(it) {
-    if (it.u) return loadImage(it.u + '=w1600-h1600');
+    if (it.u) return loadImage(it.raw ? it.u : it.u + '=w1600-h1600');
     try {
       const bmp = await createImageBitmap(it.f);
       return { src: bmp, w: bmp.width, h: bmp.height, done() { try { bmp.close(); } catch (e) {} } };
@@ -714,15 +750,145 @@
     const ok = await copyText(link);
     let msg = ok ? 'Link copied. Anyone who opens it can play your slideshow.' : 'Copy the link above to share it.';
     if (audioURL && !(yt && ytEmbed(yt))) msg += ' A music file from your computer can’t be shared, so add a YouTube link if you want music.';
-    if (items.some((i) => i.f)) msg += ' Photos from your computer aren’t included, only the album or folder.';
+    if (items.some((i) => i.f)) msg += ' Photos from your computer aren’t included. Use “Host folder photos on GitHub” below to share those.';
     $('#shareStatus').textContent = msg;
   };
+
+  // ---------- host folder photos on GitHub ----------
+  let preparing = false;
+  const slug = (v) => String(v || '').toLowerCase().trim()
+    .replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function shrink(file) {
+    let src, w, h, cleanup = () => {};
+    try {
+      const bmp = await createImageBitmap(file);
+      src = bmp; w = bmp.width; h = bmp.height;
+      cleanup = () => { try { bmp.close(); } catch (e) {} };
+    } catch (e) {
+      const url = URL.createObjectURL(file);
+      try {
+        const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+        src = im; w = im.naturalWidth; h = im.naturalHeight;
+      } finally { URL.revokeObjectURL(url); }
+    }
+    const k = Math.min(1, 1400 / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    cleanup();
+    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.8));
+  }
+
+  function saveBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  async function prepare() {
+    if (preparing) return;
+    const st = $('#prepStatus');
+    st.classList.remove('ok', 'err');
+    const name = slug($('#hostName').value);
+    if (!name) { st.textContent = 'Give the album a short name first, like france-2026.'; st.classList.add('err'); return; }
+    if (!window.JSZip) { st.textContent = 'The zip tool didn’t load. Check your connection and reload the page.'; st.classList.add('err'); return; }
+    const files = items.filter((i) => i.f).map((i) => i.f);
+    if (!files.length) { st.textContent = 'Add photos from a folder above first.'; st.classList.add('err'); return; }
+
+    preparing = true; $('#prep').disabled = true;
+    const PART = 90;
+    const folder = 'albums/' + name + '/';
+    const names = [];
+    let part = 1, inPart = 0, skipped = 0;
+    let zip = new window.JSZip();
+
+    const flush = async (last) => {
+      if (last) {
+        const title = $('#hostTitle').value.trim() || name.replace(/-/g, ' ');
+        zip.file(folder + 'manifest.json', JSON.stringify({ title, files: names }));
+      }
+      st.textContent = 'Packing zip file ' + part + '…';
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      saveBlob(blob, 'photo-drift-' + name + '-part' + part + '.zip');
+      await wait(700);
+      part++; zip = new window.JSZip(); inPart = 0;
+    };
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        st.textContent = 'Shrinking photo ' + (i + 1) + ' of ' + files.length + '…';
+        let blob;
+        try { blob = await shrink(files[i]); } catch (e) { skipped++; continue; }
+        const fname = 'p' + String(names.length + 1).padStart(3, '0') + '.jpg';
+        zip.file(folder + fname, blob);
+        names.push(fname); inPart++;
+        if (inPart >= PART && i < files.length - 1) await flush(false);
+      }
+      if (!names.length) throw new Error('None of those photos could be read.');
+      await flush(true);
+      const parts = part - 1;
+      st.textContent = 'Done. ' + names.length + ' photos packed into ' + parts + ' zip ' + (parts === 1 ? 'file' : 'files') +
+        (skipped ? ' (' + skipped + ' couldn’t be read and were skipped)' : '') + '. Now upload them to GitHub using the steps below.';
+      st.classList.add('ok');
+      $('#hostSteps').open = true;
+      makeHostedLink();
+    } catch (e) {
+      st.textContent = (e && e.message) || 'Something went wrong while preparing the photos.';
+      st.classList.add('err');
+    }
+    preparing = false;
+    $('#prep').disabled = !items.some((i) => i.f);
+  }
+
+  async function makeHostedLink() {
+    const hs = $('#hostShareStatus');
+    hs.classList.remove('ok', 'err');
+    const name = slug($('#hostName').value);
+    if (!name) { hs.textContent = 'Give the album a short name first, like france-2026.'; hs.classList.add('err'); return; }
+    const p = new URLSearchParams();
+    p.set('h', name);
+    const title = $('#hostTitle').value.trim();
+    if (title) p.set('t', title);
+    const yt = $('#ytInput').value.trim();
+    if (yt && ytEmbed(yt)) p.set('y', yt);
+    p.set('p', paceName);
+    const link = location.href.split('#')[0] + '#' + p.toString();
+    const box = $('#hostLink');
+    box.value = link; box.classList.remove('hidden'); box.select();
+    const ok = await copyText(link);
+    hs.textContent = (ok ? 'Link copied. ' : 'Copy the link above. ') + 'It will work once the photos are uploaded and your site has updated.';
+    hs.classList.add('ok');
+  }
+
+  async function fetchHosted(rawName) {
+    const name = slug(rawName);
+    if (!name) throw new Error('That link has no album name.');
+    const base = new URL('albums/' + name + '/', location.href.split('#')[0]).href;
+    let r;
+    try { r = await fetch(base + 'manifest.json', { cache: 'no-cache' }); }
+    catch (e) { throw new Error('Couldn’t reach this site. Check your connection and try again.'); }
+    if (!r.ok) throw new Error('That album isn’t on this site yet. If it was just uploaded, wait a minute or two and refresh.');
+    const data = await r.json();
+    const photos = (data.files || []).filter((f) => /^[\w.-]+\.jpg$/i.test(f)).map((f) => ({ u: base + f, raw: true }));
+    if (!photos.length) throw new Error('That album has no photos in it.');
+    return { title: data.title || '', photos };
+  }
+
+  $('#prep').onclick = prepare;
+  $('#hostShare').onclick = makeHostedLink;
 
   // ---------- opening a shared link ----------
   (function initShared() {
     const p = new URLSearchParams(location.hash.replace(/^#/, ''));
     const a = p.get('a');
-    if (!a) return;
+    const h = p.get('h');
+    if (!a && !h) return;
     shared = true;
     const y = p.get('y');
     $('#ytInput').value = (y && ytEmbed(y)) ? y : '';
@@ -735,8 +901,9 @@
     $('#landing').classList.remove('hidden');
     $('#landingPlay').onclick = startShow;
     const st = $('#landingStatus');
-    fetchAlbum(a).then((data) => {
+    (h ? fetchHosted(h) : fetchAlbum(a)).then((data) => {
       items = data.photos;
+      if (data.title && !t) { $('#landingTitle').textContent = data.title; document.title = data.title + ' · Photo drift'; }
       st.textContent = data.photos.length + ' photos ready.';
       st.classList.add('ok');
       $('#landingPlay').disabled = false;

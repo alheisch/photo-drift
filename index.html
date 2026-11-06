@@ -34,9 +34,9 @@
 
   /* ---------- setup ---------- */
   #setup { min-height: 100%; display: flex; justify-content: center; padding: 48px 20px 64px; }
-  .wrap { width: 100%; max-width: 640px; }
+  .wrap { width: 100%; max-width: 600px; }
   h1 { font-size: clamp(40px, 8vw, 64px); line-height: 1; letter-spacing: -0.03em; margin: 0 0 12px; font-weight: 700; }
-  .lede { color: var(--muted); font-size: 18px; margin: 0 0 36px; max-width: 46ch; }
+  .lede { color: var(--muted); font-size: 18px; margin: 0 0 36px; }
   section { margin-bottom: 32px; }
   h2 { font-size: 20px; margin: 0 0 10px; font-weight: 600; letter-spacing: -0.01em; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -45,36 +45,24 @@
     padding: 10px 20px; cursor: pointer; font-weight: 600;
   }
   .btn:hover { border-color: var(--accent); }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
-  #load:disabled { cursor: wait; }
   .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 18px; padding: 14px 32px; }
   .primary:disabled { opacity: .4; cursor: not-allowed; }
   input[type="text"] {
-    flex: 1 1 280px; min-width: 0; padding: 12px 14px; border-radius: 12px;
+    width: 100%; padding: 12px 14px; border-radius: 12px;
     border: 1px solid var(--line); background: var(--panel);
   }
   .status { margin: 10px 0 0; color: var(--muted); min-height: 1.5em; }
   .status.ok { color: var(--accent); font-weight: 600; }
   .status.err { color: #c0392b; }
-  .or { margin: 14px 0; color: var(--muted); }
+  .or { margin: 12px 0; color: var(--muted); }
   .note { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
   #drop {
     border: 2px dashed var(--line); background: var(--drop); border-radius: 18px;
-    padding: 24px 20px; text-align: center; transition: border-color .15s, background .15s;
+    padding: 32px 20px; text-align: center; transition: border-color .15s, background .15s;
   }
   #drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--drop)); }
-  #drop p { margin: 0 0 14px; }
+  #drop p { margin: 0 0 16px; font-size: 18px; }
   #drop .row { justify-content: center; }
-  details { margin-top: 12px; color: var(--muted); }
-  summary { cursor: pointer; font-weight: 600; color: var(--ink); }
-
-  /* ---------- shared-link landing ---------- */
-  #landing { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 48px 20px; }
-  #landing .wrap { text-align: left; }
-  .kicker { margin: 0 0 8px; color: var(--accent); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
-  #landing a { color: var(--accent); }
-  #shareLink, #hostLink { width: 100%; margin-top: 10px; }
-  details ol { margin: 10px 0 0; padding-left: 22px; }
 
   /* ---------- stage ---------- */
   #stage {
@@ -127,16 +115,6 @@
 
     <section>
       <h2>Your photos</h2>
-
-      <div id="albumBlock">
-        <div class="row">
-          <input type="text" id="albumInput" placeholder="Paste a Google Photos album or Drive folder link" aria-label="Google Photos album or Google Drive folder link" autocomplete="off">
-          <button class="btn" id="load" type="button">Load photos</button>
-        </div>
-        <p class="note">The album or folder needs to be shared with “Anyone with the link”.</p>
-        <p class="or">or</p>
-      </div>
-
       <div id="drop">
         <p>Drop a folder of photos here</p>
         <div class="row">
@@ -147,12 +125,11 @@
       <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
       <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
       <p class="status" id="photoStatus" aria-live="polite">No photos added yet.</p>
-
     </section>
 
     <section>
       <h2>Music</h2>
-      <input type="text" id="ytInput" style="width:100%" placeholder="Paste a YouTube video or playlist link" aria-label="YouTube link" autocomplete="off">
+      <input type="text" id="ytInput" placeholder="Paste a YouTube video or playlist link" aria-label="YouTube link" autocomplete="off">
       <p class="or">or</p>
       <div class="row">
         <button class="btn" id="pickAudio" type="button">Choose a music file</button>
@@ -163,50 +140,6 @@
 
     <button class="btn primary" id="start" type="button" disabled>Start slideshow</button>
     <p class="note">Press F for full screen once it’s running. Space pauses.</p>
-
-    <section style="margin-top:36px">
-      <h2>Share it</h2>
-      <button class="btn" id="share" type="button" disabled>Create share link</button>
-      <input type="text" id="shareLink" class="hidden" readonly aria-label="Share link">
-      <p class="status" id="shareStatus" aria-live="polite">Load an album first, then you can make a link anyone can open.</p>
-    </section>
-
-    <section>
-      <h2>Host folder photos on GitHub</h2>
-      <p class="note" style="margin-top:0">Photos from your computer can’t be shared directly. This shrinks them and packs them into zip files you upload to your GitHub site, so a share link can show them. Anyone with the link can see these photos, so only use ones you’re happy to make public.</p>
-      <div class="row" style="margin-top:12px">
-        <input type="text" id="hostName" placeholder="Album name, like france-2026" aria-label="Album name" autocomplete="off">
-        <input type="text" id="hostTitle" placeholder="Title shown to viewers (optional)" aria-label="Album title" autocomplete="off">
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="prep" type="button" disabled>Prepare photos</button>
-        <button class="btn" id="hostShare" type="button">Create share link</button>
-      </div>
-      <p class="status" id="prepStatus" aria-live="polite">Add photos from a folder above first.</p>
-      <details id="hostSteps">
-        <summary>How to upload them to GitHub</summary>
-        <ol>
-          <li>Unzip each zip file that downloaded. Each one contains a folder called <b>albums</b>. If your browser asks to allow multiple downloads, say yes.</li>
-          <li>Open your repository on GitHub, click <b>Add file</b>, then <b>Upload files</b>.</li>
-          <li>Drag the <b>albums</b> folder from the first unzip into the box. Wait for the upload to finish, then click <b>Commit changes</b>.</li>
-          <li>Repeat for every other zip. They all add photos to the same album. The last zip also contains the <b>manifest.json</b> file that makes the album appear.</li>
-          <li>Wait a minute or two for your site to update, then open your share link.</li>
-        </ol>
-      </details>
-      <input type="text" id="hostLink" class="hidden" readonly aria-label="Share link for the hosted album">
-      <p class="status" id="hostShareStatus" aria-live="polite"></p>
-    </section>
-  </div>
-</main>
-
-<main id="landing" class="hidden">
-  <div class="wrap">
-    <p class="kicker">A slideshow for you</p>
-    <h1 id="landingTitle">Photo drift</h1>
-    <p class="status" id="landingStatus" aria-live="polite">Loading photos…</p>
-    <button class="btn primary" id="landingPlay" type="button" disabled>Play slideshow</button>
-    <p class="note">Turn your sound on. Press F for full screen and Space to pause.</p>
-    <p class="note"><a id="makeOwn" href="./">Make your own</a></p>
   </div>
 </main>
 
@@ -228,207 +161,35 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function () {
   const $ = (s) => document.querySelector(s);
   const IMG_EXT = /\.(jpe?g|png|webp|gif|avif|bmp|heic|heif)$/i;
   const isImage = (f) => (f.type && f.type.startsWith('image/')) || IMG_EXT.test(f.name || '');
-  const store = {
-    get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
-  };
 
-  let items = [];            // { u } for album photos, { f } for files from the computer
+  let files = [];
   const seen = new Set();
   let audioURL = null;
 
-  // ---------- photo status ----------
-  function refreshPhotoStatus(extra) {
-    const st = $('#photoStatus');
-    st.classList.remove('err');
-    if (items.length) {
-      st.textContent = (extra || '') + items.length + (items.length === 1 ? ' photo' : ' photos') + ' ready.';
-      st.classList.add('ok');
-    } else {
-      st.textContent = 'No photos added yet.';
-      st.classList.remove('ok');
-    }
-    $('#start').disabled = items.length === 0;
-    const hasFiles = items.some((i) => i.f);
-    $('#prep').disabled = !hasFiles;
-    if (typeof preparing === 'undefined' || !preparing) {
-      const ps = $('#prepStatus');
-      if (ps && !ps.classList.contains('ok') && !ps.classList.contains('err')) {
-        ps.textContent = hasFiles ? 'Ready to prepare ' + items.filter((i) => i.f).length + ' photos.' : 'Add photos from a folder above first.';
-      }
-    }
-  }
-
-  // ---------- Google Photos album link ----------
-  let shared = false;
-
-  let albumLoaded = null; // { url, title } once an album has loaded
-
-  const RELAYS = [
-    { name: 'relay 1', build: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
-    { name: 'relay 2', build: (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u) },
-    { name: 'relay 3', build: (u) => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u) }
-  ];
-  let relayLog = [];
-
-  // Fetch a page through free public relays (browsers can’t read Google’s pages directly).
-  // `accept` decides whether a relay’s answer is usable; the first usable one wins.
-  async function relayText(target, accept) {
-    for (const relay of RELAYS) {
-      try {
-        const ctl = new AbortController();
-        const to = setTimeout(() => ctl.abort(), 25000);
-        const r = await fetch(relay.build(target), { signal: ctl.signal });
-        clearTimeout(to);
-        if (!r.ok) { relayLog.push(relay.name + ': answered with code ' + r.status); continue; }
-        const text = await r.text();
-        if (accept(text)) return text;
-        relayLog.push(relay.name + ': reached Google but found no photos on the page (' + Math.round(text.length / 1000) + ' KB)');
-      } catch (e) {
-        relayLog.push(relay.name + ': ' + (e && e.name === 'AbortError' ? 'timed out' : 'blocked or unreachable'));
-      }
-    }
-    return null;
-  }
-  const relayDetails = () => relayLog.length ? ' Details: ' + relayLog.join('; ') + '.' : '';
-
-  // ----- Google Photos shared album -----
-  function parseAlbumHtml(html) {
-    const t = (html.match(/<meta property="og:title" content="([^"]*)"/) || [])[1] || 'Album';
-    const title = t.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+·\s+.*$/, '');
-    const re = /lh3\.googleusercontent\.com\\?\/pw\\?\/([\w-]+)/g;
-    const ids = new Set(); const photos = []; let m;
-    while ((m = re.exec(html))) {
-      if (ids.has(m[1])) continue;
-      ids.add(m[1]);
-      photos.push({ u: 'https://lh3.googleusercontent.com/pw/' + m[1] });
-    }
-    return { title, photos };
-  }
-
-  async function fetchPhotosAlbum(url) {
-    if (!/^https:\/\/(photos\.app\.goo\.gl|photos\.google\.com)\//.test(url)) {
-      throw new Error('Paste a Google Photos album link (it starts with photos.app.goo.gl) or a Google Drive folder link.');
-    }
-    let data = null;
-    await relayText(url, (t) => { data = parseAlbumHtml(t); return data.photos.length > 0; });
-    if (!data || !data.photos.length) {
-      throw new Error('Couldn’t read that album. Check that it’s shared by link and try again.' + relayDetails());
-    }
-    return data;
-  }
-
-  // ----- Google Drive folder -----
-  function parseDriveFolderHtml(html) {
-    const files = [], folders = [];
-    let title = '';
-    try {
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      title = (doc.title || '').replace(/\s*[-–]\s*Google Drive\s*$/i, '').trim();
-      doc.querySelectorAll('.flip-entry').forEach((el) => {
-        const id = (el.id || '').replace(/^entry-/, '');
-        if (!id) return;
-        const name = ((el.querySelector('.flip-entry-title') || {}).textContent || '').trim();
-        const a = el.querySelector('a');
-        const href = (a && a.getAttribute('href')) || '';
-        if (IMG_EXT.test(name)) files.push(id);
-        else if (/\/folders\/|embeddedfolderview/.test(href)) folders.push(id);
-      });
-    } catch (e) { /* use the fallback below */ }
-    if (!files.length && !folders.length) {
-      // Fallback: collect every file id on the page. Non-photos simply fail to load and are skipped.
-      const seenIds = new Set();
-      const re = /id="entry-([\w-]{15,})"|\/file\/d\/([\w-]{15,})/g;
-      let m;
-      while ((m = re.exec(html))) {
-        const id = m[1] || m[2];
-        if (!seenIds.has(id)) { seenIds.add(id); files.push(id); }
-      }
-    }
-    return { title, files, folders };
-  }
-
-  async function fetchDriveFolder(url) {
-    const m = url.match(/\/folders\/([\w-]+)/) || url.match(/[?&]id=([\w-]+)/);
-    if (!m) throw new Error('Paste a Google Drive folder link (it contains /folders/).');
-    const visited = new Set();
-    const photos = [];
-    let title = '';
-    async function walk(id, depth) {
-      if (visited.has(id) || visited.size >= 15) return;
-      visited.add(id);
-      let res = null;
-      await relayText('https://drive.google.com/embeddedfolderview?id=' + id, (t) => {
-        res = parseDriveFolderHtml(t);
-        return res.files.length + res.folders.length > 0;
-      });
-      if (!res) return;
-      if (depth === 0) title = res.title;
-      res.files.forEach((fid) => photos.push({ u: 'https://lh3.googleusercontent.com/d/' + fid }));
-      if (depth < 2) { for (const sub of res.folders) await walk(sub, depth + 1); }
-    }
-    await walk(m[1], 0);
-    if (!photos.length) {
-      throw new Error('No photos found in that folder. Check that sharing is set to “Anyone with the link” and that it contains image files.' + relayDetails());
-    }
-    return { title: title || 'Drive folder', photos };
-  }
-
-  const isDrive = (u) => /^https:\/\/drive\.google\.com\//.test(u);
-
-  async function fetchAlbum(url) {
-    relayLog = [];
-    const data = isDrive(url) ? await fetchDriveFolder(url) : await fetchPhotosAlbum(url);
-    data.photos = (data.photos || []).filter((x) => typeof x.u === 'string' &&
-      (x.u.startsWith('https://lh3.googleusercontent.com/pw/') || x.u.startsWith('https://lh3.googleusercontent.com/d/')));
-    if (!data.photos.length) throw new Error('No photos found.');
-    return data;
-  }
-  function friendlyError(e) {
-    return (e && e.message ? e.message : 'Couldn’t read that link.').replace(/^Error:\s*/, '');
-  }
-
-  $('#albumInput').value = store.get('drift:album');
-  $('#load').onclick = async () => {
-    const url = $('#albumInput').value.trim();
-    const st = $('#photoStatus');
-    st.classList.remove('ok', 'err');
-    if (!url) { st.textContent = 'Paste an album or folder link first.'; st.classList.add('err'); return; }
-    st.textContent = 'Reading your photos…';
-    $('#load').disabled = true; $('#start').disabled = true;
-    try {
-      const data = await fetchAlbum(url);
-      items = items.filter((i) => i.f).concat(data.photos);
-      albumLoaded = { url, title: data.title || '' };
-      store.set('drift:album', url);
-      refreshPhotoStatus('“' + data.title + '”: ');
-      $('#share').disabled = false;
-      $('#shareStatus').textContent = 'Ready. Choose your music first, then create the link.';
-    } catch (e) {
-      st.textContent = friendlyError(e);
-      st.classList.add('err');
-      $('#start').disabled = items.length === 0;
-    }
-    $('#load').disabled = false;
-  };
-  $('#albumInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#load').click(); });
-
-  // ---------- photos from the computer ----------
+  // ---------- adding photos ----------
   function addFiles(list) {
     for (const f of list) {
       if (!isImage(f)) continue;
       const key = f.name + '|' + f.size + '|' + f.lastModified;
       if (seen.has(key)) continue;
-      seen.add(key); items.push({ f });
+      seen.add(key); files.push(f);
     }
-    refreshPhotoStatus();
+    const st = $('#photoStatus');
+    if (files.length) {
+      st.textContent = files.length + (files.length === 1 ? ' photo' : ' photos') + ' ready.';
+      st.classList.add('ok'); st.classList.remove('err');
+    } else {
+      st.textContent = 'No photos found in that selection.';
+      st.classList.remove('ok'); st.classList.add('err');
+    }
+    $('#start').disabled = files.length === 0;
   }
+
   async function walk(entry, out) {
     if (entry.isFile) {
       await new Promise((res) => entry.file((f) => { out.push(f); res(); }, res));
@@ -448,6 +209,7 @@
     else out.push(...Array.from(dt.files || []));
     return out;
   }
+
   const drop = $('#drop');
   ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
@@ -457,13 +219,13 @@
   });
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', (e) => e.preventDefault());
+
   $('#pickFiles').onclick = () => $('#fileInput').click();
   $('#pickFolder').onclick = () => $('#folderInput').click();
   $('#fileInput').onchange = (e) => { addFiles(Array.from(e.target.files)); e.target.value = ''; };
   $('#folderInput').onchange = (e) => { addFiles(Array.from(e.target.files)); e.target.value = ''; };
 
   // ---------- music setup ----------
-  $('#ytInput').value = store.get('drift:yt');
   $('#pickAudio').onclick = () => $('#audioInput').click();
   $('#audioInput').onchange = (e) => {
     const f = e.target.files[0];
@@ -477,8 +239,8 @@
   $('#ytInput').addEventListener('input', () => {
     const st = $('#musicStatus');
     const v = $('#ytInput').value.trim();
-    if (!v) { st.textContent = audioURL ? 'Using your audio file.' : 'Music is optional.'; st.classList.remove('err'); return; }
-    if (ytEmbed(v)) { st.textContent = 'YouTube link looks good.'; st.classList.add('ok'); st.classList.remove('err'); store.set('drift:yt', v); }
+    if (!v) { st.textContent = audioURL ? 'Using your music file.' : 'Music is optional.'; st.classList.remove('err'); return; }
+    if (ytEmbed(v)) { st.textContent = 'YouTube link looks good.'; st.classList.add('ok'); st.classList.remove('err'); }
     else { st.textContent = 'That doesn’t look like a YouTube link.'; st.classList.remove('ok'); st.classList.add('err'); }
   });
 
@@ -513,28 +275,23 @@
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   }
-  function nextItem() {
-    if (pos >= order.length) { order = shuffle(items.slice()); pos = 0; }
+  function nextFile() {
+    if (pos >= order.length) { order = shuffle(files.slice()); pos = 0; }
     return order[pos++];
   }
 
-  function loadImage(src, cleanup) {
-    return new Promise((res, rej) => {
-      const im = new Image();
-      const timeout = setTimeout(() => { cleanup && cleanup(); rej(new Error('timeout')); }, 20000);
-      im.onload = () => { clearTimeout(timeout); res({ src: im, w: im.naturalWidth, h: im.naturalHeight, done: cleanup || (() => {}) }); };
-      im.onerror = () => { clearTimeout(timeout); cleanup && cleanup(); rej(new Error('load')); };
-      im.src = src;
-    });
-  }
-  async function decode(it) {
-    if (it.u) return loadImage(it.raw ? it.u : it.u + '=w1600-h1600');
+  async function decode(file) {
     try {
-      const bmp = await createImageBitmap(it.f);
+      const bmp = await createImageBitmap(file);
       return { src: bmp, w: bmp.width, h: bmp.height, done() { try { bmp.close(); } catch (e) {} } };
     } catch (e) { /* fall back to <img> */ }
-    const url = URL.createObjectURL(it.f);
-    return loadImage(url, () => URL.revokeObjectURL(url));
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file);
+      const im = new Image();
+      im.onload = () => res({ src: im, w: im.naturalWidth, h: im.naturalHeight, done() { URL.revokeObjectURL(url); } });
+      im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
+      im.src = url;
+    });
   }
 
   async function spawn() {
@@ -542,16 +299,10 @@
     loading++;
     let item = null;
     for (let t = 0; t < 6 && !item; t++) {
-      try { item = await decode(nextItem()); } catch (e) { item = null; }
+      try { item = await decode(nextFile()); } catch (e) { item = null; }
     }
     loading--;
-    if (!item) {
-      if (running && Date.now() - (spawn.lastWarn || 0) > 30000) {
-        spawn.lastWarn = Date.now();
-        toast('Photos aren’t loading. They may not be shared publicly, or this network is blocking them.');
-      }
-      return;
-    }
+    if (!item) return;
     if (!running) { item.done(); return; }
     place(item);
   }
@@ -645,12 +396,11 @@
   }
 
   function startShow() {
-    if (!items.length) return;
+    if (!files.length) return;
     $('#setup').classList.add('hidden');
-    $('#landing').classList.add('hidden');
     stage.classList.add('on');
     running = true; paused = false; $('#bPause').textContent = 'Pause';
-    order = shuffle(items.slice()); pos = 0;
+    order = shuffle(files.slice()); pos = 0;
     startMusic();
     [0, 700, 1400, 2100].forEach((t) => setTimeout(() => { if (running && !paused) spawn(); }, t));
     tick();
@@ -665,7 +415,7 @@
     $('#yt').classList.remove('on'); $('#yt').innerHTML = '';
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     stage.classList.remove('on');
-    (shared ? $('#landing') : $('#setup')).classList.remove('hidden');
+    $('#setup').classList.remove('hidden');
   }
 
   function togglePause() {
@@ -722,195 +472,6 @@
     else if (e.key === 'm' || e.key === 'M') toggleMusic();
     else if (e.key === 'p' || e.key === 'P') cyclePace();
   });
-
-  // ---------- share link ----------
-  async function copyText(t) {
-    try { await navigator.clipboard.writeText(t); return true; } catch (e) { /* fall back */ }
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      return ok;
-    } catch (e) { return false; }
-  }
-
-  $('#share').onclick = async () => {
-    if (!albumLoaded) return;
-    const p = new URLSearchParams();
-    p.set('a', albumLoaded.url);
-    const yt = $('#ytInput').value.trim();
-    if (yt && ytEmbed(yt)) p.set('y', yt);
-    p.set('p', paceName);
-    if (albumLoaded.title) p.set('t', albumLoaded.title);
-    const link = location.href.split('#')[0] + '#' + p.toString();
-    const box = $('#shareLink');
-    box.value = link; box.classList.remove('hidden'); box.select();
-    const ok = await copyText(link);
-    let msg = ok ? 'Link copied. Anyone who opens it can play your slideshow.' : 'Copy the link above to share it.';
-    if (audioURL && !(yt && ytEmbed(yt))) msg += ' A music file from your computer can’t be shared, so add a YouTube link if you want music.';
-    if (items.some((i) => i.f)) msg += ' Photos from your computer aren’t included. Use “Host folder photos on GitHub” below to share those.';
-    $('#shareStatus').textContent = msg;
-  };
-
-  // ---------- host folder photos on GitHub ----------
-  let preparing = false;
-  const slug = (v) => String(v || '').toLowerCase().trim()
-    .replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  async function shrink(file) {
-    let src, w, h, cleanup = () => {};
-    try {
-      const bmp = await createImageBitmap(file);
-      src = bmp; w = bmp.width; h = bmp.height;
-      cleanup = () => { try { bmp.close(); } catch (e) {} };
-    } catch (e) {
-      const url = URL.createObjectURL(file);
-      try {
-        const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-        src = im; w = im.naturalWidth; h = im.naturalHeight;
-      } finally { URL.revokeObjectURL(url); }
-    }
-    const k = Math.min(1, 1400 / Math.max(w, h));
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
-    const ctx = c.getContext('2d');
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(src, 0, 0, c.width, c.height);
-    cleanup();
-    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.8));
-  }
-
-  function saveBlob(blob, name) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
-
-  async function prepare() {
-    if (preparing) return;
-    const st = $('#prepStatus');
-    st.classList.remove('ok', 'err');
-    const name = slug($('#hostName').value);
-    if (!name) { st.textContent = 'Give the album a short name first, like france-2026.'; st.classList.add('err'); return; }
-    if (!window.JSZip) { st.textContent = 'The zip tool didn’t load. Check your connection and reload the page.'; st.classList.add('err'); return; }
-    const files = items.filter((i) => i.f).map((i) => i.f);
-    if (!files.length) { st.textContent = 'Add photos from a folder above first.'; st.classList.add('err'); return; }
-
-    preparing = true; $('#prep').disabled = true;
-    const PART = 90;
-    const folder = 'albums/' + name + '/';
-    const names = [];
-    let part = 1, inPart = 0, skipped = 0;
-    let zip = new window.JSZip();
-
-    const flush = async (last) => {
-      if (last) {
-        const title = $('#hostTitle').value.trim() || name.replace(/-/g, ' ');
-        zip.file(folder + 'manifest.json', JSON.stringify({ title, files: names }));
-      }
-      st.textContent = 'Packing zip file ' + part + '…';
-      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-      saveBlob(blob, 'photo-drift-' + name + '-part' + part + '.zip');
-      await wait(700);
-      part++; zip = new window.JSZip(); inPart = 0;
-    };
-
-    try {
-      for (let i = 0; i < files.length; i++) {
-        st.textContent = 'Shrinking photo ' + (i + 1) + ' of ' + files.length + '…';
-        let blob;
-        try { blob = await shrink(files[i]); } catch (e) { skipped++; continue; }
-        const fname = 'p' + String(names.length + 1).padStart(3, '0') + '.jpg';
-        zip.file(folder + fname, blob);
-        names.push(fname); inPart++;
-        if (inPart >= PART && i < files.length - 1) await flush(false);
-      }
-      if (!names.length) throw new Error('None of those photos could be read.');
-      await flush(true);
-      const parts = part - 1;
-      st.textContent = 'Done. ' + names.length + ' photos packed into ' + parts + ' zip ' + (parts === 1 ? 'file' : 'files') +
-        (skipped ? ' (' + skipped + ' couldn’t be read and were skipped)' : '') + '. Now upload them to GitHub using the steps below.';
-      st.classList.add('ok');
-      $('#hostSteps').open = true;
-      makeHostedLink();
-    } catch (e) {
-      st.textContent = (e && e.message) || 'Something went wrong while preparing the photos.';
-      st.classList.add('err');
-    }
-    preparing = false;
-    $('#prep').disabled = !items.some((i) => i.f);
-  }
-
-  async function makeHostedLink() {
-    const hs = $('#hostShareStatus');
-    hs.classList.remove('ok', 'err');
-    const name = slug($('#hostName').value);
-    if (!name) { hs.textContent = 'Give the album a short name first, like france-2026.'; hs.classList.add('err'); return; }
-    const p = new URLSearchParams();
-    p.set('h', name);
-    const title = $('#hostTitle').value.trim();
-    if (title) p.set('t', title);
-    const yt = $('#ytInput').value.trim();
-    if (yt && ytEmbed(yt)) p.set('y', yt);
-    p.set('p', paceName);
-    const link = location.href.split('#')[0] + '#' + p.toString();
-    const box = $('#hostLink');
-    box.value = link; box.classList.remove('hidden'); box.select();
-    const ok = await copyText(link);
-    hs.textContent = (ok ? 'Link copied. ' : 'Copy the link above. ') + 'It will work once the photos are uploaded and your site has updated.';
-    hs.classList.add('ok');
-  }
-
-  async function fetchHosted(rawName) {
-    const name = slug(rawName);
-    if (!name) throw new Error('That link has no album name.');
-    const base = new URL('albums/' + name + '/', location.href.split('#')[0]).href;
-    let r;
-    try { r = await fetch(base + 'manifest.json', { cache: 'no-cache' }); }
-    catch (e) { throw new Error('Couldn’t reach this site. Check your connection and try again.'); }
-    if (!r.ok) throw new Error('That album isn’t on this site yet. If it was just uploaded, wait a minute or two and refresh.');
-    const data = await r.json();
-    const photos = (data.files || []).filter((f) => /^[\w.-]+\.jpg$/i.test(f)).map((f) => ({ u: base + f, raw: true }));
-    if (!photos.length) throw new Error('That album has no photos in it.');
-    return { title: data.title || '', photos };
-  }
-
-  $('#prep').onclick = prepare;
-  $('#hostShare').onclick = makeHostedLink;
-
-  // ---------- opening a shared link ----------
-  (function initShared() {
-    const p = new URLSearchParams(location.hash.replace(/^#/, ''));
-    const a = p.get('a');
-    const h = p.get('h');
-    if (!a && !h) return;
-    shared = true;
-    const y = p.get('y');
-    $('#ytInput').value = (y && ytEmbed(y)) ? y : '';
-    const pc = p.get('p');
-    if (pc && PACES[pc]) { paceName = pc; $('#bPace').textContent = 'Pace: ' + pc; }
-    const t = p.get('t');
-    if (t) { $('#landingTitle').textContent = t; document.title = t + ' · Photo drift'; }
-    $('#makeOwn').href = location.href.split('#')[0];
-    $('#setup').classList.add('hidden');
-    $('#landing').classList.remove('hidden');
-    $('#landingPlay').onclick = startShow;
-    const st = $('#landingStatus');
-    (h ? fetchHosted(h) : fetchAlbum(a)).then((data) => {
-      items = data.photos;
-      if (data.title && !t) { $('#landingTitle').textContent = data.title; document.title = data.title + ' · Photo drift'; }
-      st.textContent = data.photos.length + ' photos ready.';
-      st.classList.add('ok');
-      $('#landingPlay').disabled = false;
-    }).catch((e) => { st.textContent = friendlyError(e); st.classList.add('err'); });
-  })();
-
-  refreshPhotoStatus();
 })();
 </script>
 </body>

@@ -64,6 +64,11 @@
   #drop p { margin: 0 0 16px; font-size: 18px; }
   #drop .row { justify-content: center; }
 
+  /* ---------- live link ---------- */
+  #liveLink { margin-top: 10px; }
+  #landing { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 48px 20px; }
+  .kicker { margin: 0 0 8px; color: var(--accent); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; }
+
   /* ---------- stage ---------- */
   #stage {
     position: fixed; inset: 0; z-index: 50; display: none; overflow: hidden;
@@ -140,6 +145,24 @@
 
     <button class="btn primary" id="start" type="button" disabled>Start slideshow</button>
     <p class="note">Press F for full screen once it’s running. Space pauses.</p>
+
+    <section style="margin-top:40px">
+      <h2>Share a live link</h2>
+      <p class="note" style="margin-top:0">Anyone with the link can watch while this page stays open on your computer. If you close it or your computer sleeps, the link stops working.</p>
+      <div class="row" style="margin-top:12px"><button class="btn" id="liveBtn" type="button" disabled>Create live link</button></div>
+      <input type="text" id="liveLink" class="hidden" readonly aria-label="Live link">
+      <p class="status" id="liveStatus" aria-live="polite">Add your photos first.</p>
+    </section>
+  </div>
+</main>
+
+<main id="landing" class="hidden">
+  <div class="wrap">
+    <p class="kicker">A live slideshow for you</p>
+    <h1>Photo drift</h1>
+    <p class="status" id="landingStatus" aria-live="polite">Connecting…</p>
+    <button class="btn primary" id="landingPlay" type="button" disabled>Play slideshow</button>
+    <p class="note">Turn your sound on. Press F for full screen and Space to pause. This plays live from the host’s computer, so it ends if they close their page.</p>
   </div>
 </main>
 
@@ -155,12 +178,14 @@
         <button class="btn" id="bMusic" type="button">Music off</button>
         <input type="range" id="vol" min="0" max="1" step="0.01" value="0.7" aria-label="Music volume">
       </span>
+      <button class="btn hidden" id="bLive" type="button">Copy live link</button>
       <button class="btn" id="bFull" type="button">Full screen</button>
       <button class="btn" id="bBack" type="button">Back</button>
     </div>
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 (function () {
   const $ = (s) => document.querySelector(s);
@@ -168,6 +193,7 @@
   const isImage = (f) => (f.type && f.type.startsWith('image/')) || IMG_EXT.test(f.name || '');
 
   let files = [];
+  let shared = false;   // true when this page was opened from someone’s live link
   const seen = new Set();
   let audioURL = null;
 
@@ -188,6 +214,8 @@
       st.classList.remove('ok'); st.classList.add('err');
     }
     $('#start').disabled = files.length === 0;
+    $('#liveBtn').disabled = files.length === 0;
+    if (!liveActive) $('#liveStatus').textContent = files.length ? 'Ready. Choose your music first, then create the link.' : 'Add your photos first.';
   }
 
   async function walk(entry, out) {
@@ -280,7 +308,7 @@
     return order[pos++];
   }
 
-  async function decode(file) {
+  async function decodeBlob(file) {
     try {
       const bmp = await createImageBitmap(file);
       return { src: bmp, w: bmp.width, h: bmp.height, done() { try { bmp.close(); } catch (e) {} } };
@@ -292,6 +320,11 @@
       im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
       im.src = url;
     });
+  }
+
+  function decode(file) {
+    if (file && typeof file.live === 'number') return fetchLive(file.live);
+    return decodeBlob(file);
   }
 
   async function spawn() {
@@ -398,6 +431,7 @@
   function startShow() {
     if (!files.length) return;
     $('#setup').classList.add('hidden');
+    $('#landing').classList.add('hidden');
     stage.classList.add('on');
     running = true; paused = false; $('#bPause').textContent = 'Pause';
     order = shuffle(files.slice()); pos = 0;
@@ -415,7 +449,7 @@
     $('#yt').classList.remove('on'); $('#yt').innerHTML = '';
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     stage.classList.remove('on');
-    $('#setup').classList.remove('hidden');
+    (shared ? $('#landing') : $('#setup')).classList.remove('hidden');
   }
 
   function togglePause() {
@@ -446,6 +480,173 @@
     if (audio.paused) { audio.play(); $('#bMusic').textContent = 'Music on'; }
     else { audio.pause(); $('#bMusic').textContent = 'Music off'; }
   }
+
+  // ---------- live link ----------
+  let peer = null, liveActive = false, viewers = 0, liveLink = '';
+  const shrunk = new Map(); // photo number -> shrunken JPEG bytes, kept small
+
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch (e) { /* fall back */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  async function shrink(file) {
+    const d = await decodeBlob(file);
+    const k = Math.min(1, 1400 / Math.max(d.w, d.h));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(d.w * k)); c.height = Math.max(1, Math.round(d.h * k));
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(d.src, 0, 0, c.width, c.height);
+    d.done();
+    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.8));
+  }
+
+  async function hostPhoto(i) {
+    if (shrunk.has(i)) return shrunk.get(i);
+    const buf = await (await shrink(files[i])).arrayBuffer();
+    shrunk.set(i, buf);
+    if (shrunk.size > 100) shrunk.delete(shrunk.keys().next().value);
+    return buf;
+  }
+
+  function liveMsg(msg, cls) {
+    const st = $('#liveStatus');
+    st.textContent = msg;
+    st.classList.remove('ok', 'err');
+    if (cls) st.classList.add(cls);
+  }
+  function viewersMsg() {
+    if (!liveActive) return;
+    let m = 'Live link ready. ' + viewers + (viewers === 1 ? ' person' : ' people') + ' watching. Keep this page open.';
+    if (audioURL && !ytEmbed($('#ytInput').value)) m += ' Music from a file on your computer isn’t shared, so viewers won’t hear it. Use a YouTube link for that.';
+    liveMsg(m, 'ok');
+  }
+
+  async function startLive() {
+    if (liveActive) { await copyText(liveLink); liveMsg('Link copied again.', 'ok'); setTimeout(viewersMsg, 1500); return; }
+    if (!files.length) return;
+    if (!window.Peer) { liveMsg('The sharing tool didn’t load. Check your connection and reload the page.', 'err'); return; }
+    liveMsg('Creating your link…');
+    $('#liveBtn').disabled = true;
+    const id = 'pd' + Math.random().toString(36).slice(2, 12);
+    peer = new window.Peer(id);
+
+    peer.on('open', async () => {
+      liveActive = true;
+      liveLink = location.href.split('#')[0] + '#live=' + id;
+      const box = $('#liveLink');
+      box.value = liveLink; box.classList.remove('hidden'); box.select();
+      $('#bLive').classList.remove('hidden');
+      $('#liveBtn').disabled = false; $('#liveBtn').textContent = 'Copy link again';
+      const ok = await copyText(liveLink);
+      viewersMsg();
+      if (ok) $('#liveStatus').textContent = 'Link copied. ' + $('#liveStatus').textContent.replace(/^Live link ready\. /, '');
+    });
+
+    peer.on('connection', (conn) => {
+      let queue = Promise.resolve();
+      conn.on('open', () => {
+        viewers++; viewersMsg();
+        conn.send({ t: 'hello', n: files.length, yt: $('#ytInput').value.trim(), pace: paceName });
+      });
+      conn.on('data', (m) => {
+        if (!m || m.t !== 'get' || !Number.isInteger(m.i) || m.i < 0 || m.i >= files.length) return;
+        queue = queue.then(async () => {
+          try { conn.send({ t: 'photo', i: m.i, b: await hostPhoto(m.i) }); }
+          catch (e) { conn.send({ t: 'fail', i: m.i }); }
+        });
+      });
+      conn.on('close', () => { viewers = Math.max(0, viewers - 1); viewersMsg(); });
+      conn.on('error', () => {});
+    });
+
+    peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+    peer.on('error', (e) => {
+      if (!liveActive) {
+        liveMsg('Couldn’t create the link (' + ((e && e.type) || 'error') + '). Check your connection, or try a different network.', 'err');
+        $('#liveBtn').disabled = false;
+      }
+    });
+  }
+
+  window.addEventListener('beforeunload', (e) => {
+    if (liveActive && viewers > 0) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ---------- live link: viewer ----------
+  let liveConn = null, liveGone = false;
+  const pending = new Map();
+
+  function fetchLive(i) {
+    return new Promise((res, rej) => {
+      if (!liveConn || !liveConn.open || liveGone) return rej(new Error('offline'));
+      const timer = setTimeout(() => { pending.delete(i); rej(new Error('timeout')); }, 30000);
+      pending.set(i, { res, rej, timer });
+      liveConn.send({ t: 'get', i });
+    }).then(decodeBlob);
+  }
+
+  function connectLive(id) {
+    shared = true;
+    $('#setup').classList.add('hidden');
+    $('#landing').classList.remove('hidden');
+    const st = $('#landingStatus');
+    const fail = (m) => { st.textContent = m; st.classList.add('err'); st.classList.remove('ok'); };
+    if (!window.Peer) { fail('The sharing tool didn’t load. Check your connection and reload the page.'); return; }
+
+    const timeout = setTimeout(() => fail('Couldn’t connect. The person who shared this needs to keep their page open, and some school or work networks block this kind of connection.'), 25000);
+    const me = new window.Peer();
+
+    me.on('open', () => {
+      const conn = me.connect(id, { reliable: true });
+      liveConn = conn;
+      conn.on('data', (m) => {
+        if (!m) return;
+        if (m.t === 'hello') {
+          clearTimeout(timeout);
+          files = Array.from({ length: m.n }, (_, i) => ({ live: i }));
+          if (m.yt && ytEmbed(m.yt)) $('#ytInput').value = m.yt;
+          if (m.pace && PACES[m.pace]) { paceName = m.pace; $('#bPace').textContent = 'Pace: ' + m.pace; }
+          st.textContent = m.n + ' photos ready.';
+          st.classList.add('ok'); st.classList.remove('err');
+          $('#landingPlay').disabled = m.n === 0;
+        } else if (m.t === 'photo' || m.t === 'fail') {
+          const w = pending.get(m.i);
+          if (!w) return;
+          pending.delete(m.i); clearTimeout(w.timer);
+          if (m.t === 'photo') w.res(new Blob([m.b], { type: 'image/jpeg' })); else w.rej(new Error('fail'));
+        }
+      });
+      conn.on('close', () => {
+        liveGone = true;
+        if (running) stopShow();
+        $('#landingPlay').disabled = true;
+        fail('The host closed their page, so the slideshow has ended. Ask them for a new link.');
+      });
+      conn.on('error', () => {});
+    });
+
+    me.on('error', (e) => {
+      clearTimeout(timeout);
+      if (e && e.type === 'peer-unavailable') fail('That live link isn’t active. Ask the person who shared it to open their page and send a new link.');
+      else fail('Couldn’t connect (' + ((e && e.type) || 'error') + '). Some school or work networks block this kind of connection.');
+    });
+  }
+
+  $('#liveBtn').onclick = startLive;
+  $('#bLive').onclick = async () => { toast((await copyText(liveLink)) ? 'Link copied.' : 'Copy the link from the main page.'); };
+  $('#landingPlay').onclick = startShow;
+
+  const liveId = (location.hash.match(/^#live=([\w-]+)$/) || [])[1];
+  if (liveId) connectLive(liveId);
 
   $('#start').onclick = startShow;
   $('#bPause').onclick = togglePause;
